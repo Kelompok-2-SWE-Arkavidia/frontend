@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
@@ -410,21 +411,54 @@ class ApiService {
     }
   }
 
-  // Delete a food item
-  Future<Map<String, dynamic>> deleteFoodItem(String id) async {
+  // Delete a food item - protected endpoint (token needed)
+  Future<Map<String, dynamic>> deleteFoodItem(String itemId) async {
+    final endpoint = 'api/v1/food-items/$itemId';
     try {
       final headers = await _getAuthHeaders();
+
+      _logRequest('DELETE', endpoint, headers);
+
       final response = await http.delete(
-        Uri.parse('${baseUrl}api/v1/food-items/$id'),
+        Uri.parse('$baseUrl$endpoint'),
         headers: headers,
       );
 
-      return _handleApiResponse(response, 'Gagal menghapus item makanan');
+      // Handle response appropriately even if it's empty
+      String responseBody = response.body.isEmpty ? '{}' : response.body;
+      final Map<String, dynamic> responseData =
+          response.body.isEmpty
+              ? {'message': 'Makanan berhasil dihapus'}
+              : jsonDecode(responseBody);
+
+      _logResponse('DELETE', endpoint, response.statusCode, responseData);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Deletion successful
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Makanan berhasil dihapus',
+        };
+      } else if (response.statusCode == 401) {
+        // Unauthorized - token invalid or expired
+        return {
+          'success': false,
+          'message': 'Sesi habis. Silakan login kembali.',
+          'unauthorized': true,
+        };
+      } else {
+        // Deletion failed
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Gagal menghapus makanan',
+        };
+      }
     } catch (e) {
-      debugPrint('Delete food item error: $e');
+      debugPrint('❌ Delete food item error: $e');
       return {
         'success': false,
-        'message': 'Terjadi kesalahan saat menghapus item. Silakan coba lagi.',
+        'message':
+            'Terjadi kesalahan saat menghapus makanan. Silakan coba lagi.',
       };
     }
   }
@@ -571,6 +605,80 @@ class ApiService {
     }
   }
 
+  // Detect food age from image
+  Future<Map<String, dynamic>> detectFoodAge(File imageFile) async {
+    try {
+      debugPrint('🔍 Detecting food age from image');
+
+      // Create multipart request
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${baseUrl}api/v1/food-items/detect-age'),
+      );
+
+      // Get auth headers but remove content-type as it will be set by multipart
+      final authHeaders = await _getAuthHeaders();
+      // Remove content-type header as it will be set automatically for multipart request
+      authHeaders.remove('Content-Type');
+      request.headers.addAll(authHeaders);
+
+      // Add file to request
+      final fileStream = http.ByteStream(imageFile.openRead());
+      final fileLength = await imageFile.length();
+
+      final multipartFile = http.MultipartFile(
+        'image', // This should match the field name expected by your API
+        fileStream,
+        fileLength,
+        filename: 'food_image.jpg',
+      );
+
+      request.files.add(multipartFile);
+
+      // Log the request
+      _logRequest(
+        'POST',
+        'api/v1/food-items/detect-age',
+        request.headers,
+        body: 'Image file: ${imageFile.path}, size: ${fileLength} bytes',
+      );
+
+      // Send the request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      // Parse response
+      final responseData = jsonDecode(response.body);
+      _logResponse(
+        'POST',
+        'api/v1/food-items/detect-age',
+        response.statusCode,
+        responseData,
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {
+          'success': true,
+          'message':
+              responseData['message'] ?? 'Food age detected successfully',
+          'data': responseData['data'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to detect food age',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Detect food age error: $e');
+      return {
+        'success': false,
+        'message':
+            'Terjadi kesalahan saat menganalisis makanan. Silakan coba lagi.',
+      };
+    }
+  }
+
   // Handle API response to standardize error handling
   Map<String, dynamic> _handleApiResponse(
     http.Response response,
@@ -597,6 +705,74 @@ class ApiService {
       return {
         'success': false,
         'message': responseData['message'] ?? errorMessage,
+      };
+    }
+  }
+
+  // Get dashboard statistics - protected endpoint (token needed)
+  Future<http.Response> get({required String endpoint}) async {
+    final headers = await _getAuthHeaders();
+
+    _logRequest('GET', endpoint, headers);
+
+    final response = await http.get(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = jsonDecode(response.body);
+      _logResponse('GET', endpoint, response.statusCode, responseData);
+    } else {
+      debugPrint('❌ GET request failed: ${response.statusCode}');
+    }
+
+    return response;
+  }
+
+  // Get dashboard statistics
+  Future<Map<String, dynamic>> getDashboardStats() async {
+    const endpoint = 'api/v1/food-items/dashboard';
+    try {
+      final headers = await _getAuthHeaders();
+
+      _logRequest('GET', endpoint, headers);
+
+      final response = await http.get(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+      );
+
+      final Map<String, dynamic> responseData = jsonDecode(response.body);
+      _logResponse('GET', endpoint, response.statusCode, responseData);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Success
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'] ?? 'Statistik berhasil diperoleh',
+        };
+      } else if (response.statusCode == 401) {
+        // Unauthorized - token invalid or expired
+        return {
+          'success': false,
+          'message': 'Sesi habis. Silakan login kembali.',
+          'unauthorized': true,
+        };
+      } else {
+        // Failed
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Gagal memperoleh statistik',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Get dashboard stats error: $e');
+      return {
+        'success': false,
+        'message':
+            'Terjadi kesalahan saat mengambil statistik. Silakan coba lagi.',
       };
     }
   }

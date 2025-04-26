@@ -302,6 +302,54 @@ class FoodItemsNotifier extends StateNotifier<FoodItemsData> {
       );
     }
   }
+
+  // Delete a food item by ID
+  Future<Map<String, dynamic>> deleteFoodItem(String itemId) async {
+    debugPrint('🗑️ Deleting food item with ID: $itemId');
+
+    try {
+      // Call API to delete the item
+      final result = await _apiService.deleteFoodItem(itemId);
+
+      if (result['success']) {
+        debugPrint('✅ Food item deleted successfully');
+
+        // Remove the item from state if it exists
+        final updatedItems =
+            state.items.where((item) => item.id != itemId).toList();
+
+        // Update state with the item removed
+        state = state.copyWith(
+          items: updatedItems,
+          // We don't change the state to success because it might be mid-loading other operations
+        );
+
+        // Refresh the list to get updated data
+        await refreshFoodItems();
+
+        return result;
+      } else if (result.containsKey('unauthorized') &&
+          result['unauthorized'] == true) {
+        debugPrint('🔒 Unauthorized access detected while deleting item');
+        state = state.copyWith(
+          state: FoodItemsState.unauthorized,
+          errorMessage: result['message'],
+        );
+        return result;
+      } else {
+        // Other error
+        debugPrint('❌ Failed to delete food item: ${result['message']}');
+        return result;
+      }
+    } catch (e) {
+      debugPrint('❌ Exception in deleteFoodItem: $e');
+      return {
+        'success': false,
+        'message':
+            'Terjadi kesalahan saat menghapus makanan. Silakan coba lagi.',
+      };
+    }
+  }
 }
 
 // API service provider

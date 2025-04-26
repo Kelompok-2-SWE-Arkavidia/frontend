@@ -602,10 +602,10 @@ class _StockScreenState extends ConsumerState<StockScreen>
           final status = _getItemStatus(item);
 
           return StockItem(
-            name: item.name,
-            quantity: '${item.quantity} ${item.unit}',
-            expiryDate: item.expiryDate,
-            status: status,
+            item: item,
+            onEdit: () {
+              _showAddItemDialog(context);
+            },
           );
         },
         // Load more items when reaching the bottom

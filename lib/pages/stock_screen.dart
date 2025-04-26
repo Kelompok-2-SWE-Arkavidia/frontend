@@ -1,9 +1,75 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/stock_item.dart';
 import '../widgets/add_item_dialog.dart';
+import '../providers/food_provider.dart';
+import '../models/food_item_model.dart';
 
-class StockScreen extends StatelessWidget {
+class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({Key? key}) : super(key: key);
+
+  @override
+  ConsumerState<StockScreen> createState() => _StockScreenState();
+}
+
+class _StockScreenState extends ConsumerState<StockScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  String _currentStatus = 'all';
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(_handleTabChange);
+
+    // Load initial data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadItems();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_handleTabChange);
+    _tabController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging) {
+      return;
+    }
+
+    // Map tab index to status
+    final statuses = ['all', 'active', 'expiring_soon', 'expired'];
+    final newStatus = statuses[_tabController.index];
+
+    // Only update if status changed
+    if (newStatus != _currentStatus) {
+      setState(() {
+        _currentStatus = newStatus;
+      });
+
+      // Filter items by new status
+      ref.read(foodItemsProvider.notifier).filterByStatus(newStatus);
+    }
+  }
+
+  void _loadItems() {
+    ref.read(foodItemsProvider.notifier).fetchFoodItems(status: _currentStatus);
+  }
+
+  void _searchItems() {
+    if (_searchQuery.isNotEmpty) {
+      ref.read(foodItemsProvider.notifier).searchItems(_searchQuery);
+    } else {
+      _loadItems();
+    }
+  }
 
   void _showAddItemDialog(BuildContext context) {
     showDialog(context: context, builder: (context) => const AddItemDialog());
@@ -11,17 +77,21 @@ class StockScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the food items provider
+    final foodItemsData = ref.watch(foodItemsProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Stok Makanan')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
               children: [
                 Expanded(
                   child: TextField(
+                    controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Cari item...',
                       prefixIcon: const Icon(Icons.search),
@@ -30,6 +100,12 @@ class StockScreen extends StatelessWidget {
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                    onSubmitted: (_) => _searchItems(),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -39,214 +115,152 @@ class StockScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.filter_list),
-                    onPressed: () {},
+                    icon: const Icon(Icons.search),
+                    onPressed: _searchItems,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: DefaultTabController(
-                length: 4,
-                child: Column(
-                  children: [
-                    const TabBar(
-                      tabs: [
-                        Tab(text: 'Semua'),
-                        Tab(
-                          child: Text(
-                            'Aman',
-                            style: TextStyle(color: Color(0xFF22C55E)),
-                          ),
-                        ),
-                        Tab(
-                          child: Text(
-                            'Segera',
-                            style: TextStyle(color: Color(0xFFF59E0B)),
-                          ),
-                        ),
-                        Tab(
-                          child: Text(
-                            'Kadaluarsa',
-                            style: TextStyle(color: Color(0xFFEF4444)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          // All Tab
-                          ListView(
-                            padding: const EdgeInsets.only(top: 16),
-                            children: [
-                              StockItem(
-                                name: 'Bayam',
-                                quantity: '1 ikat',
-                                expiryDate: DateTime(2025, 4, 15),
-                                status: 'warning',
-                              ),
-                              StockItem(
-                                name: 'Susu UHT',
-                                quantity: '1 liter',
-                                expiryDate: DateTime(2025, 5, 20),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Roti Gandum',
-                                quantity: '1 bungkus',
-                                expiryDate: DateTime(2025, 4, 10),
-                                status: 'expired',
-                              ),
-                              StockItem(
-                                name: 'Telur Ayam',
-                                quantity: '1 kg',
-                                expiryDate: DateTime(2025, 4, 25),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Tomat',
-                                quantity: '500 gr',
-                                expiryDate: DateTime(2025, 4, 14),
-                                status: 'warning',
-                              ),
-                              StockItem(
-                                name: 'Wortel',
-                                quantity: '250 gr',
-                                expiryDate: DateTime(2025, 4, 20),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Kentang',
-                                quantity: '1 kg',
-                                expiryDate: DateTime(2025, 5, 10),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Apel',
-                                quantity: '500 gr',
-                                expiryDate: DateTime(2025, 4, 18),
-                                status: 'safe',
-                              ),
-                            ],
-                          ),
-                          // Safe Tab
-                          ListView(
-                            padding: const EdgeInsets.only(top: 16),
-                            children: [
-                              StockItem(
-                                name: 'Susu UHT',
-                                quantity: '1 liter',
-                                expiryDate: DateTime(2025, 5, 20),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Telur Ayam',
-                                quantity: '1 kg',
-                                expiryDate: DateTime(2025, 4, 25),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Wortel',
-                                quantity: '250 gr',
-                                expiryDate: DateTime(2025, 4, 20),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Kentang',
-                                quantity: '1 kg',
-                                expiryDate: DateTime(2025, 5, 10),
-                                status: 'safe',
-                              ),
-                              StockItem(
-                                name: 'Apel',
-                                quantity: '500 gr',
-                                expiryDate: DateTime(2025, 4, 18),
-                                status: 'safe',
-                              ),
-                            ],
-                          ),
-                          // Warning Tab
-                          ListView(
-                            padding: const EdgeInsets.only(top: 16),
-                            children: [
-                              StockItem(
-                                name: 'Bayam',
-                                quantity: '1 ikat',
-                                expiryDate: DateTime(2025, 4, 15),
-                                status: 'warning',
-                              ),
-                              StockItem(
-                                name: 'Tomat',
-                                quantity: '500 gr',
-                                expiryDate: DateTime(2025, 4, 14),
-                                status: 'warning',
-                              ),
-                            ],
-                          ),
-                          // Expired Tab
-                          ListView(
-                            padding: const EdgeInsets.only(top: 16),
-                            children: [
-                              StockItem(
-                                name: 'Roti Gandum',
-                                quantity: '1 bungkus',
-                                expiryDate: DateTime(2025, 4, 10),
-                                status: 'expired',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+          ),
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.center,
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Semua'),
+              Tab(
+                child: Text('Aman', style: TextStyle(color: Color(0xFF22C55E))),
+              ),
+              Tab(
+                child: Text(
+                  'Segera',
+                  style: TextStyle(color: Color(0xFFF59E0B)),
                 ),
               ),
+              Tab(
+                child: Text(
+                  'Kadaluarsa',
+                  style: TextStyle(color: Color(0xFFEF4444)),
+                ),
+              ),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // All items tab
+                _buildItemsList(foodItemsData),
+                // Safe items tab
+                _buildItemsList(foodItemsData),
+                // Warning items tab
+                _buildItemsList(foodItemsData),
+                // Expired items tab
+                _buildItemsList(foodItemsData),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddItemDialog(context),
-        backgroundColor: Theme.of(context).primaryColor,
         child: const Icon(Icons.add),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).primaryColor,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Beranda',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            activeIcon: Icon(Icons.inventory_2),
-            label: 'Stok',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.restaurant_menu_outlined),
-            activeIcon: Icon(Icons.restaurant_menu),
-            label: 'Resep',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.favorite_outline),
-            activeIcon: Icon(Icons.favorite),
-            label: 'Donasi',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.swap_horiz_outlined),
-            activeIcon: Icon(Icons.swap_horiz),
-            label: 'Barter',
-          ),
-        ],
-        onTap: (index) {
-          // Handle navigation
+    );
+  }
+
+  Widget _buildItemsList(FoodItemsData foodItemsData) {
+    // Show loading indicator if loading
+    if (foodItemsData.state == FoodItemsState.loading &&
+        foodItemsData.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Show error message if there was an error
+    if (foodItemsData.state == FoodItemsState.error) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              foodItemsData.errorMessage ?? 'Terjadi kesalahan',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadItems,
+              child: const Text('Coba Lagi'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show empty state if no items
+    if (foodItemsData.items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.inventory_2_outlined,
+              size: 48,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Belum ada item',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tambahkan item pertama Anda',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => _showAddItemDialog(context),
+              child: const Text('Tambah Item'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show list of items
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await ref.read(foodItemsProvider.notifier).refreshFoodItems();
         },
+        child: ListView.builder(
+          padding: const EdgeInsets.only(top: 16, bottom: 80),
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount:
+              foodItemsData.items.length +
+              (foodItemsData.isLoadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            // Show loading indicator at the end if loading more
+            if (foodItemsData.isLoadingMore &&
+                index == foodItemsData.items.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final item = foodItemsData.items[index];
+            return StockItem(
+              item: item,
+              onEdit: () {
+                // Handle edit (implement later)
+              },
+            );
+          },
+        ),
       ),
     );
   }

@@ -6,8 +6,9 @@ import '../widgets/recipe_card.dart';
 import '../widgets/donation_card.dart';
 import '../widgets/barter_card.dart';
 import '../widgets/add_item_dialog.dart';
-import '../widgets/expiry_summary_card.dart';
+import '../widgets/dashboard_stats_card.dart';
 import '../services/notification_service.dart';
+import '../services/background_service.dart';
 import '../providers/food_provider.dart';
 import '../models/food_item_model.dart';
 import 'dart:async';
@@ -24,6 +25,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   late TabController _tabController;
   Timer? _loadHomeDataTimer;
   bool _initialLoadDone = false;
+  bool _isTestModeActive = false;
 
   @override
   void initState() {
@@ -38,6 +40,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ref
           .read(foodItemsProvider.notifier)
           .fetchFoodItems(status: 'active', refresh: true, limit: 3);
+
+      // Check if test mode is active
+      _isTestModeActive = BackgroundService.instance.isTestModeActive();
     });
   }
 
@@ -98,6 +103,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
+  // Toggle recurring test notifications
+  void _toggleRecurringNotifications(BuildContext context) async {
+    if (_isTestModeActive) {
+      // Stop test mode
+      await BackgroundService.instance.stopTestMode();
+      setState(() {
+        _isTestModeActive = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mode pengujian notifikasi dihentikan'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      // Start test mode
+      await BackgroundService.instance.startTestMode();
+      setState(() {
+        _isTestModeActive = true;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mode pengujian notifikasi diaktifkan - notifikasi akan muncul setiap 30 detik',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   void _fetchFoodItemsForTab(String status) {
     final currentStatus = ref.read(foodItemsProvider).currentStatus;
     if (status != currentStatus) {
@@ -126,24 +168,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Test Notification Button
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.notifications_active),
-                  label: const Text('Uji Notifikasi'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+              // Test Notification Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.notifications_active),
+                      label: const Text('Uji Notifikasi'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => _showTestNotification(context),
+                    ),
                   ),
-                  onPressed: () => _showTestNotification(context),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: Icon(
+                        _isTestModeActive
+                            ? Icons.notifications_off
+                            : Icons.notifications_on_outlined,
+                      ),
+                      label: Text(
+                        _isTestModeActive
+                            ? 'Hentikan Tes 30 Detik'
+                            : 'Mulai Tes 30 Detik',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            _isTestModeActive ? Colors.red : Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => _toggleRecurringNotifications(context),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 16),
 
-              // Food Expiry Summary
-              const ExpirySummaryCard(),
+              // Dashboard stats
+              const DashboardStatsCard(),
               const SizedBox(height: 20),
 
               // Stock Section
@@ -512,10 +579,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         final itemStatus = item.getUIStatus();
 
         return StockItem(
-          name: item.name,
-          quantity: '${item.quantity} ${item.unit}',
-          expiryDate: item.expiryDate,
-          status: itemStatus,
+          item: item,
+          onEdit: () {
+            _showAddItemDialog(context);
+          },
         );
       },
     );

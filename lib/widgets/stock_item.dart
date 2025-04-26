@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../models/food_item_model.dart';
+import '../providers/food_provider.dart';
 
-class StockItem extends StatelessWidget {
-  final String name;
-  final String quantity;
-  final DateTime expiryDate;
-  final String status; // 'safe', 'warning', 'expired'
+class StockItem extends ConsumerWidget {
+  final FoodItem item;
+  final VoidCallback? onEdit;
 
-  const StockItem({
-    Key? key,
-    required this.name,
-    required this.quantity,
-    required this.expiryDate,
-    required this.status,
-  }) : super(key: key);
+  const StockItem({Key? key, required this.item, this.onEdit})
+    : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Get UI status from item
+    final status = item.getUIStatus(); // 'safe', 'warning', 'expired'
+
     Color borderColor;
     Color backgroundColor;
     Color textColor;
@@ -72,7 +71,7 @@ class StockItem extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        name,
+                        item.name,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -80,7 +79,7 @@ class StockItem extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        quantity,
+                        "${item.quantity} ${item.unit}",
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                     ],
@@ -89,7 +88,7 @@ class StockItem extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        'Kadaluarsa: ${DateFormat('d MMM yyyy', 'id').format(expiryDate)}',
+                        'Kadaluarsa: ${DateFormat('d MMM yyyy', 'id').format(item.expiryDate)}',
                         style: TextStyle(color: Colors.grey[700], fontSize: 12),
                       ),
                       const SizedBox(width: 8),
@@ -107,22 +106,46 @@ class StockItem extends StatelessWidget {
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 18),
               padding: EdgeInsets.zero,
-              onSelected: (value) {
-                // Handle menu item selection
+              onSelected: (value) async {
+                if (value == 'edit' && onEdit != null) {
+                  onEdit!();
+                } else if (value == 'delete') {
+                  // Show confirmation dialog
+                  final confirmed = await _showDeleteConfirmation(context);
+                  if (confirmed == true) {
+                    // Use the foodItemsProvider to delete the item
+                    final result = await ref
+                        .read(foodItemsProvider.notifier)
+                        .deleteFoodItem(item.id);
+
+                    if (context.mounted) {
+                      // Show a snackbar with the result
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(result['message'] ?? 'Item dihapus'),
+                          backgroundColor:
+                              result['success'] ? Colors.green : Colors.red,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
+                }
               },
               itemBuilder:
                   (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      height: 40,
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, size: 16),
-                          SizedBox(width: 8),
-                          Text('Edit', style: TextStyle(fontSize: 14)),
-                        ],
+                    if (onEdit != null)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        height: 40,
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 16),
+                            SizedBox(width: 8),
+                            Text('Edit', style: TextStyle(fontSize: 14)),
+                          ],
+                        ),
                       ),
-                    ),
                     const PopupMenuItem(
                       value: 'delete',
                       height: 40,
@@ -142,6 +165,33 @@ class StockItem extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Future<bool?> _showDeleteConfirmation(BuildContext context) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Hapus'),
+          content: Text('Apakah Anda yakin ingin menghapus "${item.name}"?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Batal'),
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Hapus'),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

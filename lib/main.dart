@@ -4,7 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'bottom_navigation.dart';
 import 'pages/home_screen.dart';
-import 'pages/stock_page.dart';
+import 'pages/stock_screen.dart';
 import 'pages/recipes_page.dart';
 import 'pages/donate_page.dart';
 import 'pages/barter_page.dart';
@@ -151,6 +151,16 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
+  // Screen options - we removed the Recipes tab since we now have
+  // a center button in the navigation bar
+  final List<Widget> _screens = const [
+    HomeScreen(), // 0
+    StockScreen(), // 1
+    RecipesPage(), // 2 - Not directly accessible from nav bar
+    DonatePage(), // 3
+    BarterPage(), // 4
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -176,21 +186,17 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Adjusted to handle the new navigation layout
+    Widget currentScreen = _screens[_currentIndex];
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: const [
-          HomeScreen(),
-          StockScreen(),
-          RecipesPage(),
-          DonatePage(),
-          BarterPage(),
-        ],
-      ),
+      body: currentScreen,
       bottomNavigationBar: BottomNavigation(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
       ),
+      // Remove floating action button and notch since they're now built into BottomNavigation
+      extendBody: true, // Important for transparent notch
     );
   }
 }
