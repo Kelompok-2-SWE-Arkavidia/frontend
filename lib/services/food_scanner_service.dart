@@ -22,32 +22,83 @@ class FoodScannerService {
       // Convert XFile to File
       final File file = File(imageFile.path);
 
-      // Call API service
-      final result = await _apiService.detectFoodAge(file);
-
-      if (!result['success']) {
-        debugPrint('❌ Food age detection failed: ${result['message']}');
-        return {'status': 'error', 'message': result['message']};
+      // Check if file exists and is readable
+      if (!file.existsSync()) {
+        debugPrint('❌ Image file does not exist: ${file.path}');
+        return {'status': 'error', 'message': 'File gambar tidak ditemukan.'};
       }
 
-      final data = result['data'];
-      debugPrint('✅ Food age detection success: $data');
+      final fileSize = await file.length();
+      debugPrint('📸 Image file size: $fileSize bytes');
+      debugPrint('📸 Image file path: ${file.path}');
 
-      // Transform API response to match the UI's expected format
-      return {
-        'status': 'success',
-        'food_type': data['foodType'] ?? 'Unknown',
-        'estimated_age': '${data['estimatedAgeDays'] ?? 0} days',
-        'freshness': _getFreshnessFromAge(data['estimatedAgeDays'] ?? 0),
-        'expires_in': _getExpiresInText(data['estimatedAgeDays'] ?? 0),
-        'confidence': data['confidenceScore'] ?? 0.0,
-        'raw_data': data, // Include the original data for debugging
-      };
+      // Log file extension to help debug MIME type issues
+      final fileExtension = file.path.split('.').last.toLowerCase();
+      debugPrint('📸 Image file extension: $fileExtension');
+
+      // For camera captures, make sure we have a valid extension
+      if (fileExtension == 'jpg' || fileExtension == 'jpeg') {
+        debugPrint('✅ Valid image format detected: $fileExtension');
+      } else {
+        debugPrint('⚠️ Potentially problematic file extension: $fileExtension');
+      }
+
+      try {
+        // Call API service with additional timeout
+        final result = await _apiService.detectFoodAge(file);
+
+        if (!result['success']) {
+          debugPrint('❌ Food age detection failed: ${result['message']}');
+          return {'status': 'error', 'message': result['message']};
+        }
+
+        // Check if data exists in the response
+        if (!result.containsKey('data') || result['data'] == null) {
+          debugPrint('❌ Food age detection response missing data field');
+          return {
+            'status': 'error',
+            'message': 'Format respons API tidak valid.',
+          };
+        }
+
+        final data = result['data'];
+        debugPrint('✅ Food age detection success: $data');
+
+        // Debug the foodType field specifically
+        debugPrint('🍎 Food Type from API: ${data['foodType']}');
+
+        // Special handling for foodType to ensure it's not displayed as Unknown
+        String foodType = 'Unknown';
+        if (data['foodType'] != null) {
+          foodType = data['foodType'].toString();
+          debugPrint('🍎 Using food type: $foodType');
+        } else {
+          debugPrint('⚠️ Food type is null in API response');
+        }
+
+        // Transform API response to match the UI's expected format
+        return {
+          'status': 'success',
+          'food_type': foodType,
+          'estimated_age': '${data['estimatedAgeDays'] ?? 0} days',
+          'freshness': _getFreshnessFromAge(data['estimatedAgeDays'] ?? 0),
+          'expires_in': _getExpiresInText(data['estimatedAgeDays'] ?? 0),
+          'confidence': data['confidenceScore'] ?? 0.0,
+        };
+      } catch (e) {
+        debugPrint('❌ API call error in detectFoodAge: $e');
+        return {
+          'status': 'error',
+          'message':
+              'Gagal terhubung ke server. Periksa koneksi internet Anda.',
+        };
+      }
     } catch (e) {
       debugPrint('❌ Error in detectFoodAge: $e');
       return {
         'status': 'error',
-        'message': 'Terjadi kesalahan saat menganalisis gambar.',
+        'message':
+            'Terjadi kesalahan saat menganalisis gambar: ${e.toString()}',
       };
     }
   }
@@ -76,14 +127,19 @@ class FoodScannerService {
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
+        debugPrint('❌ No cameras available on device');
         return null;
       }
+
+      debugPrint('📸 Found ${cameras.length} cameras on device');
 
       // Use the first back camera
       final camera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
+
+      debugPrint('📸 Using camera: ${camera.name} (${camera.lensDirection})');
 
       // Initialize controller
       final controller = CameraController(
@@ -97,9 +153,13 @@ class FoodScannerService {
       );
 
       await controller.initialize();
+      debugPrint('✅ Camera initialized successfully');
       return controller;
     } on CameraException catch (e) {
-      debugPrint('Camera initialization error: ${e.description}');
+      debugPrint('❌ Camera initialization error: ${e.description}');
+      return null;
+    } catch (e) {
+      debugPrint('❌ Unexpected camera error: $e');
       return null;
     }
   }
@@ -107,10 +167,15 @@ class FoodScannerService {
   // Helper method to take a picture
   Future<XFile?> takePicture(CameraController controller) async {
     try {
+      debugPrint('📸 Taking picture...');
       final imageFile = await controller.takePicture();
+      debugPrint('✅ Picture taken: ${imageFile.path}');
       return imageFile;
     } on CameraException catch (e) {
-      debugPrint('Error taking picture: ${e.description}');
+      debugPrint('❌ Error taking picture: ${e.description}');
+      return null;
+    } catch (e) {
+      debugPrint('❌ Unexpected error taking picture: $e');
       return null;
     }
   }
@@ -118,11 +183,20 @@ class FoodScannerService {
   // Helper method to get image from gallery
   Future<XFile?> getImageFromGallery() async {
     try {
+      debugPrint('📸 Getting image from gallery...');
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        debugPrint('✅ Image picked from gallery: ${pickedFile.path}');
+      } else {
+        debugPrint('⚠️ No image selected from gallery');
+      }
       return pickedFile;
     } on PlatformException catch (e) {
-      debugPrint('Error picking image: ${e.message}');
+      debugPrint('❌ Error picking image: ${e.message}');
+      return null;
+    } catch (e) {
+      debugPrint('❌ Unexpected error picking image: $e');
       return null;
     }
   }

@@ -159,6 +159,19 @@ class StorageService {
     debugPrint('✅ StorageService: Auth data cleared successfully');
   }
 
+  // Reset only the authentication data while keeping onboarding state
+  Future<void> resetOnlyAuthData() async {
+    debugPrint(
+      '🔄 StorageService: Resetting only auth data, keeping onboarding state',
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_userKey);
+    await prefs.remove(_tokenKey);
+    debugPrint(
+      '✅ StorageService: Auth data reset successfully, onboarding state preserved',
+    );
+  }
+
   // Check if token exists and is valid (not empty)
   Future<bool> hasValidToken() async {
     final token = await getToken();

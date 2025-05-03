@@ -28,26 +28,10 @@ class OnboardingPage1 extends StatelessWidget {
               // Logo
               Row(
                 children: [
-                  RichText(
-                    text: const TextSpan(
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                      children: [
-                        TextSpan(text: 'f'),
-                        TextSpan(
-                          text: 'o',
-                          style: TextStyle(color: Colors.green),
-                        ),
-                        TextSpan(
-                          text: 'o',
-                          style: TextStyle(color: Colors.green),
-                        ),
-                        TextSpan(text: 'dia'),
-                      ],
-                    ),
+                  Image.asset(
+                    'assets/images/foodia-logo.png',
+                    height: 50,
+                    fit: BoxFit.contain,
                   ),
                 ],
               ),

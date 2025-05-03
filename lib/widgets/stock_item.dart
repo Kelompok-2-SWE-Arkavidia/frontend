@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models/food_item_model.dart';
 import '../providers/food_provider.dart';
+import '../widgets/edit_item_dialog.dart';
 
 class StockItem extends ConsumerWidget {
   final FoodItem item;
@@ -107,8 +108,8 @@ class StockItem extends ConsumerWidget {
               icon: const Icon(Icons.more_vert, size: 18),
               padding: EdgeInsets.zero,
               onSelected: (value) async {
-                if (value == 'edit' && onEdit != null) {
-                  onEdit!();
+                if (value == 'edit') {
+                  _showEditDialog(context, ref);
                 } else if (value == 'delete') {
                   // Show confirmation dialog
                   final confirmed = await _showDeleteConfirmation(context);
@@ -134,18 +135,17 @@ class StockItem extends ConsumerWidget {
               },
               itemBuilder:
                   (context) => [
-                    if (onEdit != null)
-                      const PopupMenuItem(
-                        value: 'edit',
-                        height: 40,
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit, size: 16),
-                            SizedBox(width: 8),
-                            Text('Edit', style: TextStyle(fontSize: 14)),
-                          ],
-                        ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      height: 40,
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, size: 16),
+                          SizedBox(width: 8),
+                          Text('Edit', style: TextStyle(fontSize: 14)),
+                        ],
                       ),
+                    ),
                     const PopupMenuItem(
                       value: 'delete',
                       height: 40,
@@ -166,6 +166,36 @@ class StockItem extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  // Fungsi untuk menampilkan dialog edit
+  void _showEditDialog(BuildContext context, WidgetRef ref) async {
+    final result = await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return EditItemDialog(item: item);
+      },
+    );
+
+    // Jika hasil dialog adalah sukses, tampilkan pesan
+    if (result != null &&
+        result is Map<String, dynamic> &&
+        result['success'] == true) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Item berhasil diperbarui'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+
+    // Panggil callback onEdit jika disediakan (misal untuk refresh)
+    if (onEdit != null) {
+      onEdit!();
+    }
   }
 
   Future<bool?> _showDeleteConfirmation(BuildContext context) async {

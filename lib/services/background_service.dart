@@ -25,6 +25,10 @@ class BackgroundService {
       // Initialize notification service
       await NotificationService.instance.initialize();
 
+      // Start 30-second periodic notifications
+      await NotificationService.instance.startRecurringNotifications();
+      debugPrint('✅ Started 30-second periodic notifications');
+
       // Check saved state
       final prefs = await SharedPreferences.getInstance();
       final testModeActive = prefs.getBool(_testModeKey) ?? false;
@@ -75,7 +79,7 @@ class BackgroundService {
     }
 
     try {
-      debugPrint('🔄 Starting hourly notification trigger');
+      debugPrint('🔄 Starting notification trigger (every 10 minutes)');
 
       // Store state in SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -86,14 +90,14 @@ class BackgroundService {
       // Run immediately first
       await _processHourlyNotification();
 
-      // Set up hourly timer
-      _hourlyTimer = Timer.periodic(const Duration(hours: 1), (_) async {
+      // Set up timer to run every 10 minutes
+      _hourlyTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
         await _processHourlyNotification();
       });
 
-      debugPrint('✅ Hourly notifications started - will run every hour');
+      debugPrint('✅ Notifications started - will run every 10 minutes');
     } catch (e) {
-      debugPrint('❌ Error starting hourly notifications: $e');
+      debugPrint('❌ Error starting notifications: $e');
     }
   }
 
@@ -122,7 +126,7 @@ class BackgroundService {
   // Process hourly notification
   Future<void> _processHourlyNotification() async {
     try {
-      debugPrint('🕒 Processing hourly notification');
+      debugPrint('🕒 Processing scheduled notification (10-minute interval)');
 
       // Sync with API to get latest data
       await forceSyncNow();
@@ -130,9 +134,9 @@ class BackgroundService {
       // Show notification with current expiring items
       await NotificationService.instance.showHourlySummaryNotification();
 
-      debugPrint('✅ Hourly notification processed');
+      debugPrint('✅ Scheduled notification processed');
     } catch (e) {
-      debugPrint('❌ Error processing hourly notification: $e');
+      debugPrint('❌ Error processing scheduled notification: $e');
     }
   }
 

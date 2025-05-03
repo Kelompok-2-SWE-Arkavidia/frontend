@@ -350,6 +350,91 @@ class FoodItemsNotifier extends StateNotifier<FoodItemsData> {
       };
     }
   }
+
+  // Update food item
+  Future<Map<String, dynamic>> updateFoodItem(
+    String itemId,
+    FoodItem updatedItem,
+  ) async {
+    debugPrint('🔄 Updating food item: ${updatedItem.name} (ID: $itemId)');
+    try {
+      final result = await _apiService.updateFoodItem(itemId, updatedItem);
+
+      if (result['success']) {
+        debugPrint('✅ Food item updated successfully');
+
+        // Update item in local state if it exists
+        final itemIndex = state.items.indexWhere((item) => item.id == itemId);
+        if (itemIndex >= 0) {
+          final updatedItems = [...state.items];
+          updatedItems[itemIndex] = updatedItem.copyWith(
+            id: itemId,
+          ); // Ensure ID is preserved
+
+          state = state.copyWith(items: updatedItems);
+        }
+
+        // Refresh the list to get updated data from server
+        await refreshFoodItems();
+        return result;
+      } else if (result.containsKey('unauthorized') &&
+          result['unauthorized'] == true) {
+        debugPrint('🔒 Unauthorized access detected while updating item');
+        state = state.copyWith(
+          state: FoodItemsState.unauthorized,
+          errorMessage: result['message'],
+        );
+        return result;
+      } else {
+        debugPrint('❌ Failed to update food item: ${result['message']}');
+        return result;
+      }
+    } catch (e) {
+      debugPrint('❌ Exception in updateFoodItem: $e');
+      return {
+        'success': false,
+        'message':
+            'Terjadi kesalahan saat memperbarui item. Silakan coba lagi.',
+      };
+    }
+  }
+
+  // Filter items locally based on search query
+  void filterItemsLocally(String query) {
+    debugPrint('🔍 Filtering items locally with query: $query');
+
+    if (query.isEmpty) {
+      // If query is empty, just use the current status filter
+      final currentStatus = state.currentStatus;
+      filterByStatus(currentStatus);
+      return;
+    }
+
+    // Start with all items that match the current status filter
+    List<FoodItem> baseItems = [];
+
+    // Use the most recent state items as the base for filtering
+    baseItems = [...state.items];
+
+    // Apply the search filter
+    final lowercaseQuery = query.toLowerCase();
+    final filteredItems =
+        baseItems.where((item) {
+          return item.name.toLowerCase().contains(lowercaseQuery);
+        }).toList();
+
+    debugPrint(
+      '📊 Found ${filteredItems.length} items matching "$query" locally',
+    );
+
+    // Update state with filtered items
+    state = state.copyWith(
+      state: FoodItemsState.success,
+      items: filteredItems,
+      isLoadingMore: false,
+      errorMessage: null,
+    );
+  }
 }
 
 // API service provider
@@ -363,3 +448,21 @@ final foodItemsProvider =
       final apiService = ref.watch(apiServiceProvider);
       return FoodItemsNotifier(apiService);
     });
+
+// Tambahkan provider untuk query pencarian
+final searchQueryProvider = StateProvider<String>((ref) => '');
+
+// Tambahkan provider untuk debounced search query yang akan melakukan pencarian otomatis
+final debouncedSearchProvider = Provider<String>((ref) {
+  final searchQuery = ref.watch(searchQueryProvider);
+
+  // Menambahkan debounce effect (kita tidak bisa langsung mengakses efek di sini)
+  // Jadi kita akan menggunakan searchQueryProvider di StockScreen dengan debounce
+  return searchQuery;
+});
+
+// Provider untuk status filter saat ini
+final statusFilterProvider = StateProvider<String>((ref) => 'all');
+
+// Provider for storing all fetched food items (unfiltered)
+final allFoodItemsProvider = StateProvider<List<FoodItem>>((ref) => []);

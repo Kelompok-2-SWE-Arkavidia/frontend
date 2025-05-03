@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../helpers/notification_channels.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -39,6 +40,25 @@ class NotificationService {
       tz_init.initializeTimeZones();
       debugPrint('✅ Timezones initialized');
 
+      // Registrasi notification channels untuk Android 8.0+
+      final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+          FlutterLocalNotificationsPlugin();
+
+      // Mendaftarkan semua channel notifikasi untuk Android
+      final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
+          flutterLocalNotificationsPlugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >();
+
+      if (androidPlugin != null) {
+        debugPrint('📱 Registering notification channels');
+        for (var channel in NotificationChannels.getAllChannels()) {
+          await androidPlugin.createNotificationChannel(channel);
+          debugPrint('✅ Registered channel: ${channel.id}');
+        }
+      }
+
       const AndroidInitializationSettings androidInitializationSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -47,6 +67,8 @@ class NotificationService {
             requestAlertPermission: true,
             requestBadgePermission: true,
             requestSoundPermission: true,
+            // Aktifkan notifikasi saat aplikasi ditutup untuk iOS
+            notificationCategories: [],
           );
 
       const InitializationSettings initializationSettings =
@@ -65,6 +87,8 @@ class NotificationService {
           );
           _handleNotificationResponse(response);
         },
+        // Tambahkan handler untuk notifikasi background
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
       );
 
       // Request notification permission for Android 13+
@@ -73,9 +97,84 @@ class NotificationService {
 
       _isInitialized = true;
       debugPrint('✅ Notification service initialized successfully');
+
+      // Jadwalkan notifikasi periodik selanjutnya sebagai cadangan
+      // jika aplikasi di-terminate
+      schedulePersistentNotification();
     } catch (e) {
       debugPrint('❌ Failed to initialize notification service: $e');
       debugPrint('❌ Error stack trace: ${StackTrace.current}');
+    }
+  }
+
+  // Callback untuk menangani tap notifikasi ketika aplikasi di background
+  static void notificationTapBackground(
+    NotificationResponse notificationResponse,
+  ) {
+    // Handle notification tap background
+    debugPrint(
+      'Background notification tapped: ${notificationResponse.payload}',
+    );
+  }
+
+  // Jadwalkan notifikasi persisten yang akan tetap aktif bahkan jika aplikasi ditutup
+  Future<void> schedulePersistentNotification() async {
+    try {
+      final now = DateTime.now();
+
+      // Jadwalkan notifikasi untuk 30 detik kemudian
+      final thirtySecondsLater = now.add(const Duration(seconds: 30));
+
+      // Menggunakan ID unik untuk setiap notifikasi
+      final int notificationId = now.millisecondsSinceEpoch % 100000;
+
+      // Buat tampilan notifikasi Android dengan channel tertentu
+      final androidDetails = AndroidNotificationDetails(
+        NotificationChannels.periodicChannel.id,
+        NotificationChannels.periodicChannel.name,
+        channelDescription: NotificationChannels.periodicChannel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        enableVibration: true,
+        playSound: true,
+        enableLights: true,
+        ongoing: false, // Bukan sticky notification
+        autoCancel: true,
+        category: AndroidNotificationCategory.reminder,
+      );
+
+      final iosDetails = const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+
+      final details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // Convert ke timezone local
+      final scheduledTime = tz.TZDateTime.from(thirtySecondsLater, tz.local);
+
+      // Jadwalkan notifikasi berikutnya, dengan mode yang akan aktif bahkan jika device idle
+      await _flutterLocalNotificationsPlugin.zonedSchedule(
+        notificationId,
+        'Foodia',
+        'Reminder: Check your expiring food items',
+        scheduledTime,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: 'persistent_notification:$notificationId',
+        // Jadwalkan notifikasi ini bahkan jika aplikasi ditutup
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      debugPrint(
+        '✅ Scheduled persistent notification for ${thirtySecondsLater.toString()}',
+      );
+    } catch (e) {
+      debugPrint('❌ Error scheduling persistent notification: $e');
     }
   }
 
@@ -718,11 +817,10 @@ class NotificationService {
   // Add this new method to schedule the next cycle directly
   Future<void> _directScheduleNextCycle() async {
     try {
-      // Call the next notification cycle directly without needing a notification to trigger it
       debugPrint('⏰ Direct scheduling of next notification cycle via timer');
 
       // Create a delayed future that will trigger after 30 seconds
-      Future.delayed(const Duration(seconds: 30), () {
+      Future.delayed(const Duration(seconds: 600), () {
         // Only continue if test mode is still active
         if (_isTestModeActive) {
           debugPrint('⚡ Timer triggered: initiating next notification cycle');
@@ -754,7 +852,8 @@ class NotificationService {
         '⏱️ Time since last notification: $timeSinceLastNotification seconds',
       );
 
-      if (timeSinceLastNotification > 90) {
+      if (timeSinceLastNotification > 900) {
+        // 15 minutes (1.5x the interval)
         debugPrint(
           '⚠️ DETECTED STALLED NOTIFICATIONS: No activity for $timeSinceLastNotification seconds',
         );
@@ -817,7 +916,7 @@ class NotificationService {
       await _scheduleNextTestNotification();
 
       debugPrint(
-        '✅ Started recurring test notifications every 30 seconds with continuous detail updates',
+        '✅ Started recurring test notifications every 10 minutes with continuous detail updates',
       );
     } catch (e) {
       _isTestModeActive = false;
@@ -1375,10 +1474,12 @@ class NotificationService {
     }
   }
 
-  // New method for hourly summary notification
+  // New method for summary notification every 10 minutes
   Future<void> showHourlySummaryNotification() async {
     try {
-      debugPrint('🔔 Preparing hourly summary notification');
+      debugPrint(
+        '🔔 Preparing scheduled summary notification (10-minute interval)',
+      );
 
       // Get expiring items from local storage first
       List<FoodItem> expiringItems = [];
@@ -1395,7 +1496,7 @@ class NotificationService {
 
       // Skip if no expiring items
       if (expiringItems.isEmpty) {
-        debugPrint('ℹ️ No expiring items, skipping hourly notification');
+        debugPrint('ℹ️ No expiring items, skipping scheduled notification');
         return;
       }
 
@@ -1484,6 +1585,104 @@ class NotificationService {
       debugPrint('✅ Hourly summary notification sent');
     } catch (e) {
       debugPrint('❌ Error showing hourly summary notification: $e');
+    }
+  }
+
+  // Show a single periodic notification
+  Future<void> showPeriodicNotification() async {
+    try {
+      // Generate a unique ID for each notification
+      final now = DateTime.now();
+      final notificationId = now.millisecondsSinceEpoch % 100000;
+
+      // Create a simple notification message
+      final message =
+          'Notifikasi Aplikasi (${now.hour}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')})';
+
+      // Create Android notification details using predefined channel
+      final androidDetails = AndroidNotificationDetails(
+        NotificationChannels.periodicChannel.id,
+        NotificationChannels.periodicChannel.name,
+        channelDescription: NotificationChannels.periodicChannel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        enableVibration: true,
+        playSound: true,
+      );
+
+      final iosDetails = const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+
+      final platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // Send the notification
+      await _flutterLocalNotificationsPlugin.show(
+        notificationId,
+        'Foodia',
+        message,
+        platformDetails,
+        payload: 'periodic_notification',
+      );
+
+      debugPrint('✅ Periodic notification sent: $message');
+
+      // Record successful notification
+      _lastNotificationTime = now;
+      _isNotificationStalled = false;
+
+      // Schedule the next notification after 30 seconds using exact scheduling
+      // Jadwalkan untuk 30 detik ke depan
+      final nextScheduleTime = now.add(const Duration(seconds: 30));
+      // Convert to TZ format
+      final scheduledTZDate = tz.TZDateTime.from(nextScheduleTime, tz.local);
+
+      // Schedule using zonedSchedule with exactAllowWhileIdle to work when app is closed
+      await _flutterLocalNotificationsPlugin.zonedSchedule(
+        notificationId + 1, // Use different ID
+        'Foodia',
+        'Notifikasi selanjutnya (${nextScheduleTime.hour}:${nextScheduleTime.minute.toString().padLeft(2, '0')})',
+        scheduledTZDate,
+        platformDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: 'periodic_scheduled',
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      debugPrint(
+        '✅ Next notification scheduled for ${nextScheduleTime.toString()}',
+      );
+    } catch (e) {
+      debugPrint('❌ Error sending periodic notification: $e');
+
+      // Try again after a short delay if error occurred
+      Future.delayed(const Duration(seconds: 5), () {
+        showPeriodicNotification();
+      });
+    }
+  }
+
+  // Show recurring notifications every 30 seconds
+  Future<void> startRecurringNotifications() async {
+    try {
+      debugPrint('🔄 Starting 30-second interval notifications');
+
+      // Kirim notifikasi langsung
+      await showPeriodicNotification();
+
+      // Jadwalkan juga notifikasi persistent sebagai backup
+      await schedulePersistentNotification();
+
+      debugPrint(
+        '✅ 30-second interval notifications started with persistent scheduling',
+      );
+    } catch (e) {
+      debugPrint('❌ Error starting recurring notifications: $e');
     }
   }
 }

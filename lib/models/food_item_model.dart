@@ -188,4 +188,33 @@ class FoodItem {
       return 'safe';
     }
   }
+
+  // Metode untuk membuat salinan objek dengan properti yang dimodifikasi
+  FoodItem copyWith({
+    String? id,
+    String? name,
+    DateTime? expiryDate,
+    String? category,
+    int? quantity,
+    String? unit,
+    String? status,
+    bool? isPackaged,
+    String? userId,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return FoodItem(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      expiryDate: expiryDate ?? this.expiryDate,
+      category: category ?? this.category,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
+      status: status ?? this.status,
+      isPackaged: isPackaged ?? this.isPackaged,
+      userId: userId ?? this.userId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? DateTime.now(), // Selalu update waktu pembaruan
+    );
+  }
 }

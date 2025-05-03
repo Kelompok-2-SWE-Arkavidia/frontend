@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 import '../widgets/app_header.dart';
 import '../widgets/stock_item.dart';
-import '../widgets/recipe_card.dart';
-import '../widgets/donation_card.dart';
-import '../widgets/barter_card.dart';
 import '../widgets/add_item_dialog.dart';
 import '../widgets/dashboard_stats_card.dart';
 import '../services/notification_service.dart';
 import '../services/background_service.dart';
 import '../providers/food_provider.dart';
 import '../models/food_item_model.dart';
-import 'dart:async';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -23,23 +21,21 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  Timer? _loadHomeDataTimer;
-  bool _initialLoadDone = false;
+  final TextEditingController _searchController = TextEditingController();
   bool _isTestModeActive = false;
+
+  // Debounce timer untuk pencarian
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-
-    // Listen to tab changes to filter items by status
     _tabController.addListener(_handleTabChange);
 
-    // Fetch food items for the initial tab
+    // Load initial data
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(foodItemsProvider.notifier)
-          .fetchFoodItems(status: 'active', refresh: true, limit: 3);
+      _loadItems();
 
       // Check if test mode is active
       _isTestModeActive = BackgroundService.instance.isTestModeActive();
@@ -50,57 +46,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void dispose() {
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
-    _loadHomeDataTimer?.cancel();
+    _searchController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
-  // Handle tab changes
   void _handleTabChange() {
-    if (!_tabController.indexIsChanging) {
-      String status;
-      switch (_tabController.index) {
-        case 1:
-          status = 'active'; // API status untuk makanan aman
-          break;
-        case 2:
-          status =
-              'expiring_soon'; // API status untuk makanan segera kadaluarsa
-          break;
-        case 3:
-          status = 'expired'; // API status untuk makanan kadaluarsa
-          break;
-        case 0:
-        default:
-          status = 'all'; // API status untuk semua makanan
-          break;
-      }
-      // Fetch only 3 items for preview
-      _fetchFoodItemsForTab(status);
+    if (_tabController.indexIsChanging) {
+      return;
     }
+
+    // Map tab index to status
+    final statuses = ['all', 'active', 'expiring_soon', 'expired'];
+    final newStatus = statuses[_tabController.index];
+
+    // Update status filter provider
+    ref.read(statusFilterProvider.notifier).state = newStatus;
+
+    // Filter items by new status
+    ref.read(foodItemsProvider.notifier).filterByStatus(newStatus);
+  }
+
+  void _loadItems() {
+    final status = ref.read(statusFilterProvider);
+    ref.read(foodItemsProvider.notifier).fetchFoodItems(status: status);
+  }
+
+  // Method untuk melakukan pencarian dengan debounce
+  void _onSearchChanged(String query) {
+    // Reset timer setiap kali pengguna mengetik
+    _debounceTimer?.cancel();
+
+    // Update search query provider
+    ref.read(searchQueryProvider.notifier).state = query;
+
+    // Setelah pengguna berhenti mengetik selama 500ms, lakukan pencarian
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      // Use local filtering instead of API call
+      ref.read(foodItemsProvider.notifier).filterItemsLocally(query);
+    });
   }
 
   void _showAddItemDialog(BuildContext context) {
     showDialog(context: context, builder: (context) => const AddItemDialog());
-  }
-
-  void _navigateToStockPage(BuildContext context) {
-    // Navigate to MainScreen with stock tab (index 1) active
-    Navigator.pushReplacementNamed(
-      context,
-      '/home',
-      arguments: {'tabIndex': 1},
-    );
-  }
-
-  // Fungsi untuk menampilkan notifikasi test
-  void _showTestNotification(BuildContext context) async {
-    await NotificationService.instance.showImmediateTestNotification();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notifikasi kadaluarsa akan muncul dalam beberapa detik'),
-        duration: Duration(seconds: 2),
-      ),
-    );
   }
 
   // Toggle recurring test notifications
@@ -140,451 +128,338 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
-  void _fetchFoodItemsForTab(String status) {
-    final currentStatus = ref.read(foodItemsProvider).currentStatus;
-    if (status != currentStatus) {
-      debugPrint(
-        '🔄 Home screen fetching items for tab with status: $status (was: $currentStatus)',
-      );
-      ref
-          .read(foodItemsProvider.notifier)
-          .fetchFoodItems(status: status, refresh: true, limit: 3);
-    } else {
-      debugPrint(
-        'ℹ️ Home screen tab status unchanged: $status, skipping API call',
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final foodItemsState = ref.watch(foodItemsProvider);
+    // Watch the food items provider dan search query provider
+    final foodItemsData = ref.watch(foodItemsProvider);
+    final searchQuery = ref.watch(searchQueryProvider);
+
+    // Pastikan text field menampilkan query saat ini
+    if (_searchController.text != searchQuery) {
+      _searchController.text = searchQuery;
+    }
 
     return Scaffold(
       appBar: const AppHeader(),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 70),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Test Notification Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.notifications_active),
-                      label: const Text('Uji Notifikasi'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => _showTestNotification(context),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: Icon(
-                        _isTestModeActive
-                            ? Icons.notifications_off
-                            : Icons.notifications_on_outlined,
-                      ),
-                      label: Text(
-                        _isTestModeActive
-                            ? 'Hentikan Tes 30 Detik'
-                            : 'Mulai Tes 30 Detik',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            _isTestModeActive ? Colors.red : Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => _toggleRecurringNotifications(context),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Dashboard stats
-              const DashboardStatsCard(),
-              const SizedBox(height: 20),
-
-              // Stock Section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Stok Makanan',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => _navigateToStockPage(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                        ),
-                        child: const Text(
-                          'Lihat Semua',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.add, size: 14),
-                        label: const Text(
-                          'Tambah Item',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                        ),
-                        onPressed: () => _showAddItemDialog(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Column(
-                children: [
-                  TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.center,
-                    tabs: const [
-                      Tab(text: 'Semua'),
-                      Tab(
-                        child: Text(
-                          'Aman',
-                          style: TextStyle(color: Color(0xFF22C55E)),
-                        ),
-                      ),
-                      Tab(
-                        child: Text(
-                          'Segera',
-                          style: TextStyle(color: Color(0xFFF59E0B)),
-                        ),
-                      ),
-                      Tab(
-                        child: Text(
-                          'Kadaluarsa',
-                          style: TextStyle(color: Color(0xFFEF4444)),
-                        ),
-                      ),
-                    ],
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    labelStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    unselectedLabelStyle: const TextStyle(fontSize: 12),
-                    indicatorSize: TabBarIndicatorSize.label,
-                  ),
-                  SizedBox(
-                    height: 200,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // All Tab - showing all items
-                        _buildFoodItemsList(foodItemsState.items, 'all'),
-
-                        // Safe Tab - filter items with 'active' status
-                        _buildFoodItemsList(
-                          foodItemsState.items
-                              .where((item) => item.status == 'active')
-                              .toList(),
-                          'active',
-                        ),
-
-                        // Warning Tab - filter items with 'expiring_soon' status
-                        _buildFoodItemsList(
-                          foodItemsState.items
-                              .where((item) => item.status == 'expiring_soon')
-                              .toList(),
-                          'expiring_soon',
-                        ),
-
-                        // Expired Tab - filter items with 'expired' status
-                        _buildFoodItemsList(
-                          foodItemsState.items
-                              .where((item) => item.status == 'expired')
-                              .toList(),
-                          'expired',
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Recipe Section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Rekomendasi Resep',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/recipes');
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Text(
-                      'Lihat Semua',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 340,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    SizedBox(
-                      width: 220,
-                      child: RecipeCard(
-                        title: 'Tumis Bayam Tomat',
-                        ingredients: const ['Bayam', 'Tomat', 'Bawang'],
-                        missingIngredients: const [],
-                        imageUrl: 'https://picsum.photos/300/200?food=1',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 220,
-                      child: RecipeCard(
-                        title: 'Telur Dadar Spesial',
-                        ingredients: const ['Telur', 'Tomat'],
-                        missingIngredients: const ['Daun Bawang'],
-                        imageUrl: 'https://picsum.photos/300/200?food=2',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 220,
-                      child: RecipeCard(
-                        title: 'Sandwich Telur',
-                        ingredients: const ['Telur', 'Roti'],
-                        missingIngredients: const ['Selada', 'Mayones'],
-                        imageUrl: 'https://picsum.photos/300/200?food=3',
-                      ),
-                    ),
-                  ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Dashboard stats yang lebih kompak
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              // Donation Section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Donasi Makanan',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/donate');
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Text(
-                      'Lihat Semua',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 260,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    SizedBox(
-                      width: 260,
-                      child: DonationCard(
-                        name: 'Panti Asuhan Kasih',
-                        distance: '1.2 km',
-                        openHours: '08:00 - 17:00',
-                        imageUrl: 'https://picsum.photos/300/150?charity=1',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 260,
-                      child: DonationCard(
-                        name: 'Rumah Singgah Harapan',
-                        distance: '2.5 km',
-                        openHours: '09:00 - 16:00',
-                        imageUrl: 'https://picsum.photos/300/150?charity=2',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Barter Section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Barter Makanan',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/barter');
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Text(
-                      'Lihat Semua',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 280,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    SizedBox(
-                      width: 200,
-                      child: BarterCard(
-                        title: 'Mie Instan (5 pcs)',
-                        owner: 'Ahmad',
-                        distance: '0.8 km',
-                        expiryDate: DateTime(2025, 6, 10),
-                        imageUrl: 'https://picsum.photos/200/150?barter=1',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 200,
-                      child: BarterCard(
-                        title: 'Beras 2kg',
-                        owner: 'Siti',
-                        distance: '1.5 km',
-                        expiryDate: DateTime(2025, 8, 15),
-                        imageUrl: 'https://picsum.photos/200/150?barter=2',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 200,
-                      child: BarterCard(
-                        title: 'Minyak Goreng 1L',
-                        owner: 'Budi',
-                        distance: '2.1 km',
-                        expiryDate: DateTime(2025, 7, 20),
-                        imageUrl: 'https://picsum.photos/200/150?barter=3',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(
+              vertical: 8.0,
+              horizontal: 12.0,
+            ),
+            child: const DashboardStatsCard(),
           ),
+
+          // Search bar tanpa judul Stok Makanan
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Cari item...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon:
+                    searchQuery.isNotEmpty
+                        ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                        )
+                        : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor.withOpacity(0.5),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor.withOpacity(0.5),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 0,
+                  horizontal: 8,
+                ),
+                fillColor: Colors.white,
+                filled: true,
+                isDense: true,
+              ),
+              onChanged: _onSearchChanged,
+            ),
+          ),
+
+          // Tab bar dengan styling yang lebih kompak
+          Container(
+            height: 36,
+            margin: const EdgeInsets.only(bottom: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 3,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
+              controller: _tabController,
+              indicatorColor: AppTheme.primaryColor,
+              indicatorWeight: 2,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              padding: EdgeInsets.zero,
+              tabs: const [
+                Tab(text: 'Semua'),
+                Tab(
+                  child: Text(
+                    'Aman',
+                    style: TextStyle(color: Color(0xFF22C55E)),
+                  ),
+                ),
+                Tab(
+                  child: Text(
+                    'Segera',
+                    style: TextStyle(color: Color(0xFFF59E0B)),
+                  ),
+                ),
+                Tab(
+                  child: Text(
+                    'Kadaluarsa',
+                    style: TextStyle(color: Color(0xFFEF4444)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Tab view content - menggunakan 70% dari ruang halaman
+          if (foodItemsData.state == FoodItemsState.loading &&
+              foodItemsData.items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else
+            Expanded(
+              flex: 7, // Memberikan 70% dari ruang yang tersisa untuk list stok
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // All items tab
+                  _buildItemsList(foodItemsData),
+                  // Safe items tab
+                  _buildItemsList(foodItemsData),
+                  // Warning items tab
+                  _buildItemsList(foodItemsData),
+                  // Expired items tab
+                  _buildItemsList(foodItemsData),
+                ],
+              ),
+            ),
+        ],
+      ),
+      // Floating action button for adding items
+      floatingActionButton: Container(
+        height: 56.0,
+        width: 56.0,
+        margin: const EdgeInsets.only(
+          bottom: 72.0,
+        ), // Increased bottom margin to avoid bottom nav bar
+        child: FloatingActionButton(
+          heroTag: 'home_screen_fab',
+          backgroundColor: AppTheme.primaryColor, // Use theme color
+          elevation: 8.0,
+          onPressed: () => _showAddItemDialog(context),
+          child: const Icon(Icons.add, size: 30, color: Colors.white),
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
-  // Build food items list for Home page preview
-  Widget _buildFoodItemsList(List<FoodItem> items, String status) {
-    // Check if food items are still loading
-    final foodState = ref.watch(foodItemsProvider);
-    if (foodState.state == FoodItemsState.loading && items.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20.0),
-          child: CircularProgressIndicator(),
-        ),
-      );
+  Widget _buildItemsList(FoodItemsData foodItemsData) {
+    // Show loading indicator if loading
+    if (foodItemsData.state == FoodItemsState.loading &&
+        foodItemsData.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
     }
 
-    if (items.isEmpty) {
-      String emptyMessage;
-      switch (status) {
-        case 'active':
-          emptyMessage = 'Belum ada makanan aman';
-          break;
-        case 'expiring_soon':
-          emptyMessage = 'Belum ada makanan segera kadaluarsa';
-          break;
-        case 'expired':
-          emptyMessage = 'Belum ada makanan kadaluarsa';
-          break;
-        default:
-          emptyMessage = 'Belum ada makanan';
-      }
-
+    // Show error message if there was an error
+    if (foodItemsData.state == FoodItemsState.error) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory, size: 40, color: Colors.grey),
-            SizedBox(height: 12),
             Text(
-              emptyMessage,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
+              foodItemsData.errorMessage ?? 'Terjadi kesalahan',
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadItems,
+              child: const Text('Coba Lagi'),
             ),
           ],
         ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 12),
-      itemCount: items.length > 3 ? 3 : items.length, // Limit to 3 items
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final itemStatus = item.getUIStatus();
+    // Show empty state if no items
+    if (foodItemsData.items.isEmpty) {
+      final searchQuery = ref.watch(searchQueryProvider);
+      String emptyMessage = 'Belum ada item';
 
-        return StockItem(
-          item: item,
-          onEdit: () {
-            _showAddItemDialog(context);
+      if (searchQuery.isNotEmpty) {
+        emptyMessage = 'Tidak ada hasil untuk "$searchQuery"';
+      } else {
+        switch (ref.read(statusFilterProvider)) {
+          case 'active':
+            emptyMessage = 'Belum ada makanan aman';
+            break;
+          case 'expiring_soon':
+            emptyMessage = 'Belum ada makanan segera kadaluarsa';
+            break;
+          case 'expired':
+            emptyMessage = 'Belum ada makanan kadaluarsa';
+            break;
+          default:
+            emptyMessage = 'Belum ada makanan';
+        }
+      }
+
+      return SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 20),
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 48,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  emptyMessage,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                if (searchQuery.isEmpty)
+                  Text(
+                    'Tambahkan item pertama Anda',
+                    style: TextStyle(color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                const SizedBox(height: 16),
+                if (searchQuery.isEmpty)
+                  ElevatedButton(
+                    onPressed: () => _showAddItemDialog(context),
+                    child: const Text('Tambah Item'),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                    child: const Text('Hapus Pencarian'),
+                  ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Show list of items dengan padding yang lebih kecil
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          final searchQuery = ref.read(searchQueryProvider);
+          // First refresh the food items from API
+          await ref.read(foodItemsProvider.notifier).refreshFoodItems();
+
+          // Then apply any active search filter
+          if (searchQuery.isNotEmpty) {
+            ref
+                .read(foodItemsProvider.notifier)
+                .filterItemsLocally(searchQuery);
+          }
+        },
+        child: ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 80),
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount:
+              foodItemsData.items.length +
+              (foodItemsData.isLoadingMore ? 1 : 0),
+          itemBuilder: (context, index) {
+            // Show loading indicator at the end if loading more
+            if (foodItemsData.isLoadingMore &&
+                index == foodItemsData.items.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            final item = foodItemsData.items[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: StockItem(
+                item: item,
+                onEdit: () {
+                  _showAddItemDialog(context);
+                },
+              ),
+            );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 }

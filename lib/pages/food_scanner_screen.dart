@@ -93,9 +93,27 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
     });
 
     try {
+      // Show processing feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Memproses gambar...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
       final imageFile = await _scannerService.takePicture(_controller!);
 
       if (imageFile != null) {
+        // Show analyzing feedback
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Menganalisis makanan...'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
         final result = await _scannerService.detectFoodAge(imageFile);
 
         if (mounted) {
@@ -103,6 +121,23 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
             _scanResult = result;
             _isProcessing = false;
           });
+
+          // Show success or error feedback
+          if (result['status'] == 'success') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Analisis berhasil!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? 'Analisis gagal'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         }
       } else {
         if (mounted) {
@@ -111,19 +146,26 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Gagal mengambil gambar')),
+            const SnackBar(
+              content: Text('Gagal mengambil gambar'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
     } catch (e) {
+      debugPrint('❌ Error in _takePicture: $e');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -250,7 +292,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                'Hasil Analisis API',
+                'Hasil Analisis',
                 style: TextStyle(
                   color: AppTheme.primaryColor,
                   fontWeight: FontWeight.bold,
@@ -291,25 +333,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
           'Tingkat Kepercayaan',
           '${confidence.toStringAsFixed(1)}%',
         ),
-        const SizedBox(height: 16),
-        if (result.containsKey('raw_data'))
-          ExpansionTile(
-            title: Text('Data Mentah API'),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  result['raw_data'].toString(),
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -331,17 +355,13 @@ class _FoodScannerScreenState extends State<FoodScannerScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.error_outline,
-          color: Colors.red,
-          size: 48,
-        ),
+        const Icon(Icons.error_outline, color: Colors.red, size: 48),
         const SizedBox(height: 16),
         Text(
           'Gagal Analisis',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.red,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(color: Colors.red),
         ),
         const SizedBox(height: 16),
         Text(

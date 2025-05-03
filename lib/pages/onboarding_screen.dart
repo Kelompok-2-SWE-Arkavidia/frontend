@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'onboarding_page1.dart';
 import 'onboarding_page2.dart';
 import 'onboarding_page3.dart';
 import 'login_screen.dart';
+import '../providers/app_state_provider.dart';
 
 // Define the interface for page control
 abstract class PageControllerState<T extends StatefulWidget> extends State<T> {
   void nextPage();
 }
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({Key? key}) : super(key: key);
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen>
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     implements PageControllerState<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
@@ -28,9 +30,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   void _goToLogin() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    debugPrint(
+      '👉 Onboarding selesai, menandai onboarding sudah dilihat dan navigasi ke login',
     );
+
+    // Tandai bahwa onboarding sudah ditampilkan
+    ref.read(appStateProvider.notifier).setOnboardingShown();
+
+    // Navigasi ke halaman login
+    Navigator.of(context).pushReplacementNamed('/login');
   }
 
   @override

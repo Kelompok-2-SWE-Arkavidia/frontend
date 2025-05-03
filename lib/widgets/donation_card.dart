@@ -32,7 +32,7 @@ class DonationCard extends StatelessWidget {
             fit: BoxFit.cover,
           ),
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -45,11 +45,11 @@ class DonationCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     Expanded(
                       child: Text(
                         '$distance dari lokasi Anda',
@@ -60,18 +60,18 @@ class DonationCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Row(
                   children: [
                     const Icon(Icons.access_time, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     Text(
                       'Buka: $openHours',
                       style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
@@ -83,16 +83,18 @@ class DonationCard extends StatelessWidget {
                         ),
                         onPressed: () {},
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          minimumSize: const Size(0, 30),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {},
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          minimumSize: const Size(0, 30),
                         ),
                         child: const Text(
                           'Donasi',

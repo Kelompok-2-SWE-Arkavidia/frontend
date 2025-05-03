@@ -56,6 +56,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final email = ref.read(emailControllerProvider);
         final password = ref.read(passwordControllerProvider);
 
+        // Clear any existing snackbars before login attempt
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
         final success = await ref
             .read(authProvider.notifier)
             .login(email: email, password: password);
@@ -110,6 +113,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   // Show error dialog for authentication errors
   void _showErrorDialog(String message) {
+    // Format the error message to be more user-friendly
+    String userFriendlyMessage = message;
+
+    // Check for common API error messages and replace with user-friendly ones
+    if (message.contains('Unauthorized') ||
+        message.contains('401') ||
+        message.contains('Failed to process request')) {
+      userFriendlyMessage =
+          'Email atau kata sandi salah. Silakan periksa dan coba lagi.';
+    } else if (message.contains('Network') ||
+        message.contains('Socket') ||
+        message.contains('Connection')) {
+      userFriendlyMessage =
+          'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+    } else if (message.contains('Server') || message.contains('500')) {
+      userFriendlyMessage =
+          'Terjadi masalah pada server. Silakan coba lagi nanti.';
+    }
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -150,7 +172,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  message,
+                  userFriendlyMessage,
                   style: const TextStyle(fontSize: 16),
                   textAlign: TextAlign.center,
                 ),

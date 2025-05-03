@@ -178,7 +178,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             );
 
         if (success) {
-          // Registration successful - navigate to home screen
+          // Registration successful - navigate to email verification screen
           if (context.mounted) {
             // Show success snackbar
             ScaffoldMessenger.of(context).showSnackBar(
@@ -187,7 +187,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   children: [
                     Icon(Icons.check_circle, color: Colors.white),
                     SizedBox(width: 8),
-                    Text('Registrasi berhasil! Mengalihkan ke beranda...'),
+                    Text('Registrasi berhasil!'),
                   ],
                 ),
                 backgroundColor: Colors.green,
@@ -195,16 +195,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             );
 
-            // Delay navigation slightly to show the success message
-            Future.delayed(Duration(milliseconds: 1500), () {
-              if (context.mounted) {
-                // Use named route navigation and clear all previous routes
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/home',
-                  (route) => false, // Remove all previous routes
-                );
-              }
-            });
+            // Navigate to email verification screen
+            Navigator.of(context).pushReplacementNamed('/email-verification');
           }
         } else {
           // Get error message from provider

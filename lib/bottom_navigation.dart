@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:foodiav2/pages/food_scanner_screen.dart';
-import 'package:foodiav2/pages/ocr_scanner_screen.dart';
+import 'package:foodiav2/pages/receipt_scanner_page.dart';
 import 'theme/app_theme.dart';
 
 class BottomNavigation extends StatelessWidget {
@@ -37,11 +37,11 @@ class BottomNavigation extends StatelessWidget {
                 _buildNavItem(
                   context,
                   1,
-                  Icons.inventory_2_outlined,
-                  Icons.inventory_2,
-                  'Stok',
+                  Icons.restaurant_menu_outlined,
+                  Icons.restaurant_menu,
+                  'Resep',
                 ),
-                // Empty space for FAB
+                // Empty space for the center camera button
                 const SizedBox(width: 64),
                 _buildNavItem(
                   context,
@@ -107,7 +107,7 @@ class BottomNavigation extends StatelessWidget {
 
   Widget _buildFloatingActionButton(BuildContext context) {
     return Positioned(
-      bottom: 24,
+      bottom: 16,
       child: FloatingActionButton(
         elevation: 2,
         backgroundColor: AppTheme.primaryColor,
@@ -157,15 +157,15 @@ class BottomNavigation extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildScanOption(
                   context,
-                  icon: Icons.document_scanner,
-                  title: 'Pindai Label Kadaluarsa',
-                  subtitle: 'Deteksi tanggal kadaluarsa pada kemasan makanan',
+                  icon: Icons.receipt_long,
+                  title: 'Pindai Struk Belanja',
+                  subtitle: 'Deteksi makanan dari struk belanja',
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const OcrScannerScreen(),
+                        builder: (context) => const ReceiptScannerPage(),
                       ),
                     );
                   },
